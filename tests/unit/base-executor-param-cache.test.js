@@ -186,6 +186,68 @@ describe("BaseExecutor parameter cache persistence", () => {
     });
   });
 
+  it("bounds chained auto-fix retries with maxAutoFixAttempts", async () => {
+    previousDataDir = process.env.DATA_DIR;
+    dataDir = await mkdtemp(join(tmpdir(), "9router-param-cache-"));
+    process.env.DATA_DIR = dataDir;
+
+    const unsupportedParamResponse = (param) => new Response(JSON.stringify({
+      error: {
+        code: "unsupported_parameter",
+        param,
+        message: `Unsupported parameter: ${param}.`
+      }
+    }), { status: 400, headers: { "Content-Type": "application/json" } });
+    const proxyAwareFetch = vi
+      .fn()
+      .mockResolvedValueOnce(unsupportedParamResponse("param_a"))
+      .mockResolvedValueOnce(unsupportedParamResponse("param_b"))
+      .mockResolvedValueOnce(unsupportedParamResponse("param_c"));
+
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch }));
+
+    const { BaseExecutor } = await import("../../open-sse/executors/base.js");
+    const executor = new BaseExecutor("openai-compatible-test", {
+      baseUrl: "https://example.test/v1",
+      maxAutoFixAttempts: 2
+    });
+
+    const result = await executor.execute({
+      model: "model-a",
+      body: { messages: [], param_a: "a", param_b: "b", param_c: "c" },
+      stream: false,
+      credentials: { apiKey: "test-key" },
+      log: null
+    });
+
+    expect(result.response.status).toBe(400);
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(proxyAwareFetch.mock.calls[0][1].body)).toEqual({
+      messages: [],
+      param_a: "a",
+      param_b: "b",
+      param_c: "c"
+    });
+    expect(JSON.parse(proxyAwareFetch.mock.calls[1][1].body)).toEqual({
+      messages: [],
+      param_b: "b",
+      param_c: "c"
+    });
+    expect(JSON.parse(proxyAwareFetch.mock.calls[2][1].body)).toEqual({
+      messages: [],
+      param_c: "c"
+    });
+
+    const cache = await readParamCacheUntil(dataDir, "openai-compatible-test:model-a", {
+      param_a: null,
+      param_b: null
+    });
+    expect(cache["openai-compatible-test:model-a"]).toEqual({
+      param_a: null,
+      param_b: null
+    });
+  });
+
   it("preserves an already-present replacement param when applying cached fixes", async () => {
     previousDataDir = process.env.DATA_DIR;
     dataDir = await mkdtemp(join(tmpdir(), "9router-param-cache-"));

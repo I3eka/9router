@@ -17,6 +17,7 @@ let paramCacheSaveTimer = null;
 let paramCacheSaveInFlight = false;
 let paramCacheSaveDirty = false;
 const PARAM_CACHE_SAVE_DELAY_MS = 250;
+const DEFAULT_MAX_AUTO_FIX_ATTEMPTS = 3;
 
 // Cache learned unsupported parameter fixes.
 // Format: "provider:model" -> { "max_tokens": "max_completion_tokens", "temperature": null }
@@ -60,6 +61,12 @@ function joinPath(...parts) {
       return normalized.replace(/^[\\/]+|[\\/]+$/g, "");
     })
     .join(separator);
+}
+
+function resolveMaxAutoFixAttempts(value) {
+  if (value == null) return DEFAULT_MAX_AUTO_FIX_ATTEMPTS;
+  const attempts = Number(value);
+  return Number.isFinite(attempts) ? Math.max(0, Math.floor(attempts)) : DEFAULT_MAX_AUTO_FIX_ATTEMPTS;
 }
 
 function scheduleParamCacheSave() {
@@ -265,6 +272,8 @@ export class BaseExecutor {
 
     const cacheKey = `${this.provider}:${model}`;
     const autoFixedParams = new Set();
+    const maxAutoFixAttempts = resolveMaxAutoFixAttempts(this.config.maxAutoFixAttempts);
+    let autoFixAttempts = 0;
     const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
     const workingBody = body && typeof body === "object" ? { ...body } : body;
 
@@ -307,7 +316,10 @@ export class BaseExecutor {
         const cl = response.headers?.get?.("content-length") || "?";
         dbg("FETCH", `${this.provider.toUpperCase()} <- ${response.status} | ttft=${Date.now() - fetchT0}ms | ct=${ct} | cl=${cl}`);
 
-        if (await this.tryAutoFixBadRequest(response, cacheKey, workingBody, transformedBody, autoFixedParams, log)) {
+        if (response.status === HTTP_STATUS.BAD_REQUEST && autoFixAttempts >= maxAutoFixAttempts) {
+          log?.debug?.("RETRY", `400 auto-fix limit reached (${autoFixAttempts}/${maxAutoFixAttempts})`);
+        } else if (await this.tryAutoFixBadRequest(response, cacheKey, workingBody, transformedBody, autoFixedParams, log)) {
+          autoFixAttempts++;
           urlIndex--;
           continue;
         }
