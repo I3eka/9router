@@ -79,12 +79,23 @@ async function flushParamCacheSave() {
 
   try {
     const data = Object.fromEntries(paramFixCache.entries());
-    await fsPromises.writeFile(cacheFilePath, JSON.stringify(data, null, 2));
+    await writeJsonFileAtomically(cacheFilePath, data);
   } catch (error) {
     dbg("CACHE", `Failed to save param cache: ${error.message}`);
   } finally {
     paramCacheSaveInFlight = false;
     if (paramCacheSaveDirty && !paramCacheSaveTimer) scheduleParamCacheSave();
+  }
+}
+
+async function writeJsonFileAtomically(filePath, data) {
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    await fsPromises.writeFile(tempPath, JSON.stringify(data, null, 2));
+    await fsPromises.rename(tempPath, filePath);
+  } catch (error) {
+    if (fsPromises.rm) await fsPromises.rm(tempPath, { force: true }).catch(() => {});
+    throw error;
   }
 }
 

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -64,6 +64,7 @@ describe("BaseExecutor parameter cache persistence", () => {
     expect(cache["openai-compatible-test:model-a"]).toEqual({
       max_tokens: "max_completion_tokens"
     });
+    expect((await readdir(dataDir)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
 
   it("learns replacement token params from plain-text unsupported-parameter errors", async () => {
