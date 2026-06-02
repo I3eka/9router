@@ -168,4 +168,49 @@ describe("BaseExecutor parameter cache persistence", () => {
     });
     expect(body).toEqual({ messages: [], max_tokens: 5, max_completion_tokens: 11 });
   });
+
+  it("applies cached fixes before transformRequest derives provider-specific fields", async () => {
+    previousDataDir = process.env.DATA_DIR;
+    dataDir = await mkdtemp(join(tmpdir(), "9router-param-cache-"));
+    process.env.DATA_DIR = dataDir;
+    await writeFile(join(dataDir, "param_fixes.json"), JSON.stringify({
+      "openai-compatible-test:model-a": {
+        max_tokens: "max_completion_tokens"
+      }
+    }));
+
+    const proxyAwareFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    }));
+
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch }));
+
+    const { BaseExecutor } = await import("../../open-sse/executors/base.js");
+    class DerivedParamExecutor extends BaseExecutor {
+      transformRequest(model, body) {
+        if (body.max_tokens !== undefined) {
+          return { providerParams: { unsupportedMaxTokens: body.max_tokens } };
+        }
+        return { providerParams: { supportedMaxCompletionTokens: body.max_completion_tokens } };
+      }
+    }
+
+    const executor = new DerivedParamExecutor("openai-compatible-test", { baseUrl: "https://example.test/v1" });
+    const body = { messages: [], max_tokens: 5 };
+
+    await executor.execute({
+      model: "model-a",
+      body,
+      stream: false,
+      credentials: { apiKey: "test-key" },
+      log: null
+    });
+
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(proxyAwareFetch.mock.calls[0][1].body)).toEqual({
+      providerParams: { supportedMaxCompletionTokens: 5 }
+    });
+    expect(body).toEqual({ messages: [], max_tokens: 5 });
+  });
 });

@@ -289,6 +289,7 @@ export class BaseExecutor {
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
       const url = this.buildUrl(model, stream, urlIndex, credentials);
+      this.applyCachedParamFixes(cacheKey, workingBody);
       const transformedBody = this.transformRequest(model, workingBody, stream, credentials);
       this.applyCachedParamFixes(cacheKey, workingBody, transformedBody);
       const headers = this.buildHeaders(credentials, stream);
