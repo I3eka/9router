@@ -13,6 +13,7 @@ describe("BaseExecutor parameter cache persistence", () => {
   let previousDataDir;
 
   afterEach(async () => {
+    vi.useRealTimers();
     vi.doUnmock("../../open-sse/utils/proxyFetch.js");
     vi.doUnmock("../../open-sse/utils/atomicWrite.js");
     vi.resetModules();
@@ -121,6 +122,75 @@ describe("BaseExecutor parameter cache persistence", () => {
       max_tokens: "max_completion_tokens"
     });
     expect(writeJsonFileAtomically).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits for an already in-flight param cache save before returning", async () => {
+    previousDataDir = process.env.DATA_DIR;
+    dataDir = await mkdtemp(join(tmpdir(), "9router-param-cache-"));
+    process.env.DATA_DIR = dataDir;
+
+    const proxyAwareFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: {
+          code: "unsupported_parameter",
+          param: "max_tokens",
+          message: "Unsupported parameter: max_tokens. Use max_completion_tokens instead."
+        }
+      }), { status: 400, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }));
+    let releaseWrite;
+    const writeCanFinish = new Promise(resolve => {
+      releaseWrite = resolve;
+    });
+
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch }));
+    vi.doMock("../../open-sse/utils/atomicWrite.js", async (importOriginal) => {
+      const actual = await importOriginal();
+      return {
+        ...actual,
+        writeJsonFileAtomically: vi.fn(async (...args) => {
+          await writeCanFinish;
+          return actual.writeJsonFileAtomically(...args);
+        })
+      };
+    });
+
+    vi.useFakeTimers();
+    const { BaseExecutor, flushParamCacheSaveForTests } = await import("../../open-sse/executors/base.js");
+    const executor = new BaseExecutor("openai-compatible-test", { baseUrl: "https://example.test/v1" });
+
+    const result = await executor.execute({
+      model: "model-a",
+      body: { messages: [], max_tokens: 5 },
+      stream: false,
+      credentials: { apiKey: "test-key" },
+      log: null
+    });
+
+    expect(result.response.status).toBe(200);
+
+    vi.advanceTimersByTime(250);
+    const flushPromise = flushParamCacheSaveForTests();
+    let flushReturned = false;
+    flushPromise.then(() => {
+      flushReturned = true;
+    });
+
+    vi.advanceTimersByTime(0);
+    expect(flushReturned).toBe(false);
+
+    releaseWrite();
+    await flushPromise;
+    vi.useRealTimers();
+
+    const cache = await readParamCache(dataDir);
+    expect(cache["openai-compatible-test:model-a"]).toEqual({
+      max_tokens: "max_completion_tokens"
+    });
   });
 
   it("learns replacement token params from plain-text unsupported-parameter errors", async () => {

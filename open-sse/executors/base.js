@@ -14,6 +14,7 @@ let fsPromises = null;
 let cacheFilePath = null;
 let paramCacheSaveTimer = null;
 let paramCacheSaveInFlight = false;
+let paramCacheSavePromise = null;
 let paramCacheSaveDirty = false;
 const PARAM_CACHE_SAVE_DELAY_MS = 250;
 const DEFAULT_MAX_AUTO_FIX_ATTEMPTS = 3;
@@ -85,17 +86,21 @@ async function flushParamCacheSave() {
 
   paramCacheSaveDirty = false;
   paramCacheSaveInFlight = true;
+  paramCacheSavePromise = (async () => {
+    try {
+      const data = Object.fromEntries(paramFixCache.entries());
+      await writeJsonFileAtomically(fsPromises, cacheFilePath, data);
+    } catch (error) {
+      paramCacheSaveDirty = true;
+      dbg("CACHE", `Failed to save param cache: ${error.message}`);
+    } finally {
+      paramCacheSaveInFlight = false;
+      paramCacheSavePromise = null;
+      if (paramCacheSaveDirty && !paramCacheSaveTimer) scheduleParamCacheSave();
+    }
+  })();
 
-  try {
-    const data = Object.fromEntries(paramFixCache.entries());
-    await writeJsonFileAtomically(fsPromises, cacheFilePath, data);
-  } catch (error) {
-    paramCacheSaveDirty = true;
-    dbg("CACHE", `Failed to save param cache: ${error.message}`);
-  } finally {
-    paramCacheSaveInFlight = false;
-    if (paramCacheSaveDirty && !paramCacheSaveTimer) scheduleParamCacheSave();
-  }
+  await paramCacheSavePromise;
 }
 
 const paramCacheReady = initParamCache();
@@ -104,12 +109,17 @@ export async function flushParamCacheSaveForTests(maxPasses = 5) {
   await paramCacheReady;
 
   for (let pass = 0; pass < maxPasses; pass++) {
+    if (paramCacheSaveInFlight) {
+      await paramCacheSavePromise;
+      continue;
+    }
+
     if (paramCacheSaveTimer) {
       clearTimeout(paramCacheSaveTimer);
       paramCacheSaveTimer = null;
     }
 
-    if (!paramCacheSaveDirty || paramCacheSaveInFlight) return;
+    if (!paramCacheSaveDirty) return;
     await flushParamCacheSave();
   }
 }
