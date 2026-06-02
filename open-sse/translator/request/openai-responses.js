@@ -308,6 +308,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   // Pass through other relevant fields
   if (body.temperature !== undefined) result.temperature = body.temperature;
   if (body.max_tokens !== undefined) result.max_tokens = body.max_tokens;
+  if (body.max_completion_tokens !== undefined) result.max_completion_tokens = body.max_completion_tokens;
   if (body.top_p !== undefined) result.top_p = body.top_p;
 
   return result;

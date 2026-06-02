@@ -171,12 +171,13 @@ export function buildCursorRequest(model, body, stream, credentials) {
   const messages = convertMessages(body.messages || []);
 
   // Strip fields irrelevant to Cursor (OpenAI/Anthropic-specific)
-  const { user, metadata, tool_choice, stream_options, system, ...rest } = body;
+  const { user, metadata, tool_choice, stream_options, system, max_tokens, max_completion_tokens, ...rest } = body;
+  const maxTokens = max_tokens ?? max_completion_tokens ?? 32000;
 
   return {
     ...rest,
     messages,
-    max_tokens: 32000
+    max_tokens: maxTokens
   };
 }
 

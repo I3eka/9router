@@ -137,7 +137,7 @@ export function openaiToCommandCode(model, body, stream /* , credentials */) {
     model,
     messages,
     stream: stream !== false,
-    max_tokens: body.max_tokens ?? body.max_output_tokens ?? 64000,
+    max_tokens: body.max_tokens ?? body.max_completion_tokens ?? body.max_output_tokens ?? 64000,
     temperature: body.temperature ?? 0.3,
   };
 
