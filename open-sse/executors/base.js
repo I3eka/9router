@@ -10,7 +10,6 @@ const isNextBuildPhase = isNode && (
   process.env.NEXT_PHASE === "phase-export" ||
   process.env.NEXT_PHASE === "phase-static"
 );
-let fs = null;
 let fsPromises = null;
 let cacheFilePath = null;
 let paramCacheSaveTimer = null;
@@ -24,10 +23,9 @@ const DEFAULT_MAX_AUTO_FIX_ATTEMPTS = 3;
 const paramFixCache = new Map();
 
 async function initParamCache() {
-  if (!isNode || isNextBuildPhase || fs) return;
+  if (!isNode || isNextBuildPhase || fsPromises) return;
 
   try {
-    fs = await import("fs");
     fsPromises = await import("fs/promises");
 
     const dataDir = process.env.DATA_DIR || (
@@ -36,15 +34,17 @@ async function initParamCache() {
         : joinPath(process.env.HOME || process.cwd(), ".9router")
     );
 
-    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    await fsPromises.mkdir(dataDir, { recursive: true });
     cacheFilePath = joinPath(dataDir, "param_fixes.json");
 
-    if (fs.existsSync(cacheFilePath)) {
-      const data = JSON.parse(fs.readFileSync(cacheFilePath, "utf8"));
+    try {
+      const data = JSON.parse(await fsPromises.readFile(cacheFilePath, "utf8"));
       for (const [key, value] of Object.entries(data)) {
         paramFixCache.set(key, value);
       }
       dbg("CACHE", `Loaded ${paramFixCache.size} param fixes from disk`);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
     }
   } catch (error) {
     dbg("CACHE", `Failed to load param cache: ${error.message}`);
