@@ -65,6 +65,49 @@ describe("BaseExecutor parameter cache persistence", () => {
     });
   });
 
+  it("learns replacement token params from plain-text unsupported-parameter errors", async () => {
+    previousDataDir = process.env.DATA_DIR;
+    dataDir = await mkdtemp(join(tmpdir(), "9router-param-cache-"));
+    process.env.DATA_DIR = dataDir;
+
+    const proxyAwareFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(
+        "Unsupported parameter: max_tokens. Use max_completion_tokens instead.",
+        { status: 400, headers: { "Content-Type": "text/plain" } }
+      ))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }));
+
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch }));
+
+    const { BaseExecutor } = await import("../../open-sse/executors/base.js");
+    const executor = new BaseExecutor("openai-compatible-test", { baseUrl: "https://example.test/v1" });
+
+    const result = await executor.execute({
+      model: "model-a",
+      body: { messages: [], max_tokens: 5 },
+      stream: false,
+      credentials: { apiKey: "test-key" },
+      log: null
+    });
+
+    expect(result.response.status).toBe(200);
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(proxyAwareFetch.mock.calls[1][1].body)).toEqual({
+      messages: [],
+      max_completion_tokens: 5
+    });
+
+    await wait(400);
+    const cache = JSON.parse(await readFile(join(dataDir, "param_fixes.json"), "utf8"));
+    expect(cache["openai-compatible-test:model-a"]).toEqual({
+      max_tokens: "max_completion_tokens"
+    });
+  });
+
   it("preserves an already-present replacement param when applying cached fixes", async () => {
     previousDataDir = process.env.DATA_DIR;
     dataDir = await mkdtemp(join(tmpdir(), "9router-param-cache-"));
