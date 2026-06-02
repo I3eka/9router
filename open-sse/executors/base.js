@@ -9,7 +9,12 @@ const isNextBuildPhase = isNode && (
   process.env.NEXT_PHASE === "phase-static"
 );
 let fs = null;
+let fsPromises = null;
 let cacheFilePath = null;
+let paramCacheSaveTimer = null;
+let paramCacheSaveInFlight = false;
+let paramCacheSaveDirty = false;
+const PARAM_CACHE_SAVE_DELAY_MS = 250;
 
 // Cache learned unsupported parameter fixes.
 // Format: "provider:model" -> { "max_tokens": "max_completion_tokens", "temperature": null }
@@ -20,6 +25,7 @@ async function initParamCache() {
 
   try {
     fs = await import("fs");
+    fsPromises = await import("fs/promises");
 
     const dataDir = process.env.DATA_DIR || (
       process.platform === "win32"
@@ -54,14 +60,31 @@ function joinPath(...parts) {
     .join(separator);
 }
 
-function saveParamCache() {
-  if (!fs || !cacheFilePath) return;
+function scheduleParamCacheSave() {
+  if (!fsPromises || !cacheFilePath) return;
+
+  paramCacheSaveDirty = true;
+  if (paramCacheSaveTimer || paramCacheSaveInFlight) return;
+
+  paramCacheSaveTimer = setTimeout(flushParamCacheSave, PARAM_CACHE_SAVE_DELAY_MS);
+  paramCacheSaveTimer.unref?.();
+}
+
+async function flushParamCacheSave() {
+  paramCacheSaveTimer = null;
+  if (!fsPromises || !cacheFilePath || !paramCacheSaveDirty) return;
+
+  paramCacheSaveDirty = false;
+  paramCacheSaveInFlight = true;
 
   try {
     const data = Object.fromEntries(paramFixCache.entries());
-    fs.writeFileSync(cacheFilePath, JSON.stringify(data, null, 2));
+    await fsPromises.writeFile(cacheFilePath, JSON.stringify(data, null, 2));
   } catch (error) {
     dbg("CACHE", `Failed to save param cache: ${error.message}`);
+  } finally {
+    paramCacheSaveInFlight = false;
+    if (paramCacheSaveDirty && !paramCacheSaveTimer) scheduleParamCacheSave();
   }
 }
 
@@ -187,7 +210,7 @@ export class BaseExecutor {
       modelFixes.max_tokens = "max_completion_tokens";
       body.max_completion_tokens = body.max_tokens ?? transformedBody.max_tokens;
       delete body.max_tokens;
-      saveParamCache();
+      scheduleParamCacheSave();
       return true;
     }
 
@@ -196,7 +219,7 @@ export class BaseExecutor {
       modelFixes.max_completion_tokens = "max_tokens";
       body.max_tokens = body.max_completion_tokens ?? transformedBody.max_completion_tokens;
       delete body.max_completion_tokens;
-      saveParamCache();
+      scheduleParamCacheSave();
       return true;
     }
 
@@ -204,7 +227,7 @@ export class BaseExecutor {
       log?.debug?.("RETRY", `400 unsupported ${param}, caching and retrying without it`);
       modelFixes[param] = null;
       delete body[param];
-      saveParamCache();
+      scheduleParamCacheSave();
       return true;
     }
 
