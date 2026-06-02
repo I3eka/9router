@@ -1,7 +1,13 @@
 import { DEFAULT_MAX_TOKENS, DEFAULT_MIN_TOKENS } from "../../config/runtimeConfig.js";
 
 export function getTokenLimit(body, fallback = undefined) {
-  return body.max_completion_tokens ?? body.max_tokens ?? fallback;
+  if (Number.isFinite(body.max_completion_tokens) && body.max_completion_tokens > 0) {
+    return body.max_completion_tokens;
+  }
+  if (Number.isFinite(body.max_tokens) && body.max_tokens > 0) {
+    return body.max_tokens;
+  }
+  return fallback;
 }
 
 /**

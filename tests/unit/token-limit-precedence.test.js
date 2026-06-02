@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { adjustMaxTokens, getTokenLimit } from "../../open-sse/translator/helpers/maxTokensHelper.js";
+import { DEFAULT_MAX_TOKENS } from "../../open-sse/config/runtimeConfig.js";
 import { openaiToCommandCode } from "../../open-sse/translator/request/openai-to-commandcode.js";
 import { buildCursorRequest } from "../../open-sse/translator/request/openai-to-cursor.js";
 import { openaiToGeminiRequest } from "../../open-sse/translator/request/openai-to-gemini.js";
@@ -15,6 +16,13 @@ describe("OpenAI token-limit precedence", () => {
   it("prefers max_completion_tokens in the shared helpers", () => {
     expect(getTokenLimit(bodyWithBothLimits)).toBe(222);
     expect(adjustMaxTokens(bodyWithBothLimits)).toBe(222);
+  });
+
+  it("ignores non-positive token limits before falling back", () => {
+    expect(getTokenLimit({ max_completion_tokens: 0, max_tokens: 111 })).toBe(111);
+    expect(getTokenLimit({ max_completion_tokens: -1, max_tokens: 111 })).toBe(111);
+    expect(getTokenLimit({ max_completion_tokens: 0, max_tokens: 0 }, 333)).toBe(333);
+    expect(adjustMaxTokens({ max_tokens: 0 })).toBe(DEFAULT_MAX_TOKENS);
   });
 
   it("uses the same precedence for Gemini maxOutputTokens", () => {
