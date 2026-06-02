@@ -57,6 +57,7 @@ describe("BaseExecutor parameter cache persistence", () => {
       messages: [],
       max_completion_tokens: 5
     });
+    expect(body).toEqual({ messages: [], max_tokens: 5 });
 
     await wait(400);
     const cache = JSON.parse(await readFile(join(dataDir, "param_fixes.json"), "utf8"));
@@ -127,10 +128,11 @@ describe("BaseExecutor parameter cache persistence", () => {
 
     const { BaseExecutor } = await import("../../open-sse/executors/base.js");
     const executor = new BaseExecutor("openai-compatible-test", { baseUrl: "https://example.test/v1" });
+    const body = { messages: [], max_tokens: 5, max_completion_tokens: 11 };
 
     await executor.execute({
       model: "model-a",
-      body: { messages: [], max_tokens: 5, max_completion_tokens: 11 },
+      body,
       stream: false,
       credentials: { apiKey: "test-key" },
       log: null
@@ -141,5 +143,6 @@ describe("BaseExecutor parameter cache persistence", () => {
       messages: [],
       max_completion_tokens: 11
     });
+    expect(body).toEqual({ messages: [], max_tokens: 5, max_completion_tokens: 11 });
   });
 });

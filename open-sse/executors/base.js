@@ -293,6 +293,7 @@ export class BaseExecutor {
     const cacheKey = `${this.provider}:${model}`;
     const autoFixedParams = new Set();
     const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
+    const workingBody = body && typeof body === "object" ? { ...body } : body;
 
     // Schedule retry via retryConfig[statusKey]. Returns true when caller should `urlIndex--; continue`
     const tryRetry = async (urlIndex, statusKey, reason) => {
@@ -306,8 +307,8 @@ export class BaseExecutor {
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
       const url = this.buildUrl(model, stream, urlIndex, credentials);
-      const transformedBody = this.transformRequest(model, body, stream, credentials);
-      this.applyCachedParamFixes(cacheKey, body, transformedBody);
+      const transformedBody = this.transformRequest(model, workingBody, stream, credentials);
+      this.applyCachedParamFixes(cacheKey, workingBody, transformedBody);
       const headers = this.buildHeaders(credentials, stream);
 
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
@@ -332,7 +333,7 @@ export class BaseExecutor {
         const cl = response.headers?.get?.("content-length") || "?";
         dbg("FETCH", `${this.provider.toUpperCase()} <- ${response.status} | ttft=${Date.now() - fetchT0}ms | ct=${ct} | cl=${cl}`);
 
-        if (await this.tryAutoFixBadRequest(response, cacheKey, body, transformedBody, autoFixedParams, log)) {
+        if (await this.tryAutoFixBadRequest(response, cacheKey, workingBody, transformedBody, autoFixedParams, log)) {
           urlIndex--;
           continue;
         }
