@@ -2,6 +2,7 @@ import { HTTP_STATUS, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIM
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
 import { extractUnsupportedParamFromResponse } from "../utils/unsupportedParam.js";
+import { writeJsonFileAtomically } from "../utils/atomicWrite.js";
 
 const isNode = typeof process !== "undefined" && process.versions?.node && typeof window === "undefined";
 const isNextBuildPhase = isNode && (
@@ -80,23 +81,12 @@ async function flushParamCacheSave() {
 
   try {
     const data = Object.fromEntries(paramFixCache.entries());
-    await writeJsonFileAtomically(cacheFilePath, data);
+    await writeJsonFileAtomically(fsPromises, cacheFilePath, data);
   } catch (error) {
     dbg("CACHE", `Failed to save param cache: ${error.message}`);
   } finally {
     paramCacheSaveInFlight = false;
     if (paramCacheSaveDirty && !paramCacheSaveTimer) scheduleParamCacheSave();
-  }
-}
-
-async function writeJsonFileAtomically(filePath, data) {
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
-  try {
-    await fsPromises.writeFile(tempPath, JSON.stringify(data, null, 2));
-    await fsPromises.rename(tempPath, filePath);
-  } catch (error) {
-    if (fsPromises.rm) await fsPromises.rm(tempPath, { force: true }).catch(() => {});
-    throw error;
   }
 }
 
