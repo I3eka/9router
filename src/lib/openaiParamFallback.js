@@ -33,6 +33,19 @@ async function getTokenFallbackPayload(response, payload) {
   return null;
 }
 
+async function discardResponseBody(response) {
+  if (!response?.body) return;
+
+  if (typeof response.body.cancel === "function") {
+    await response.body.cancel().catch(() => {});
+    return;
+  }
+
+  if (!response.bodyUsed && typeof response.arrayBuffer === "function") {
+    await response.arrayBuffer().catch(() => {});
+  }
+}
+
 export async function fetchOpenAIStyleWithTokenFallback(fetcher, url, options = {}, payload) {
   const buildOptions = (body) => ({
     ...options,
@@ -43,5 +56,6 @@ export async function fetchOpenAIStyleWithTokenFallback(fetcher, url, options = 
   const fallbackPayload = await getTokenFallbackPayload(firstResponse, payload);
   if (!fallbackPayload) return firstResponse;
 
+  await discardResponseBody(firstResponse);
   return fetcher(url, buildOptions(fallbackPayload));
 }

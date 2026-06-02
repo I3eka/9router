@@ -36,4 +36,73 @@ describe("fetchOpenAIStyleWithTokenFallback", () => {
       max_completion_tokens: 64
     });
   });
+
+  it("cancels the first response body before retrying with fallback payload", async () => {
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const firstResponse = {
+      status: 400,
+      body: { cancel },
+      bodyUsed: false,
+      clone: () => ({
+        text: () => Promise.resolve(JSON.stringify({
+          error: {
+            code: "unsupported_parameter",
+            param: "max_tokens",
+            message: "Unsupported parameter: max_tokens. Use max_completion_tokens instead."
+          }
+        }))
+      })
+    };
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(firstResponse)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }));
+
+    const response = await fetchOpenAIStyleWithTokenFallback(fetcher, "https://example.test/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    }, {
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 64
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(fetcher.mock.invocationCallOrder[1]);
+  });
+
+  it("returns the first response untouched when no fallback is needed", async () => {
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const firstResponse = {
+      status: 400,
+      body: { cancel },
+      bodyUsed: false,
+      clone: () => ({
+        text: () => Promise.resolve(JSON.stringify({
+          error: {
+            code: "unsupported_parameter",
+            param: "temperature",
+            message: "Unsupported parameter: temperature."
+          }
+        }))
+      })
+    };
+    const fetcher = vi.fn().mockResolvedValueOnce(firstResponse);
+
+    const response = await fetchOpenAIStyleWithTokenFallback(fetcher, "https://example.test/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    }, {
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 64
+    });
+
+    expect(response).toBe(firstResponse);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(cancel).not.toHaveBeenCalled();
+  });
 });
