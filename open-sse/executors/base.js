@@ -70,6 +70,19 @@ function resolveMaxAutoFixAttempts(value) {
   return Number.isFinite(attempts) ? Math.max(0, Math.floor(attempts)) : DEFAULT_MAX_AUTO_FIX_ATTEMPTS;
 }
 
+async function discardResponseBody(response) {
+  if (!response?.body) return;
+
+  if (typeof response.body.cancel === "function") {
+    await response.body.cancel().catch(() => {});
+    return;
+  }
+
+  if (!response.bodyUsed && typeof response.arrayBuffer === "function") {
+    await response.arrayBuffer().catch(() => {});
+  }
+}
+
 function scheduleParamCacheSave() {
   if (!fsPromises || !cacheFilePath) return;
 
@@ -344,6 +357,7 @@ export class BaseExecutor {
           log?.debug?.("RETRY", `400 auto-fix limit reached (${autoFixAttempts}/${maxAutoFixAttempts})`);
         } else if (await this.tryAutoFixBadRequest(response, cacheKey, workingBody, transformedBody, autoFixedParams, log)) {
           autoFixAttempts++;
+          await discardResponseBody(response);
           urlIndex--;
           continue;
         }

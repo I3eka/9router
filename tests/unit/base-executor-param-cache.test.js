@@ -72,6 +72,57 @@ describe("BaseExecutor parameter cache persistence", () => {
     expect((await readdir(dataDir)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
 
+  it("cancels the original 400 response body before auto-fix retrying", async () => {
+    previousDataDir = process.env.DATA_DIR;
+    dataDir = await mkdtemp(join(tmpdir(), "9router-param-cache-"));
+    process.env.DATA_DIR = dataDir;
+
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const firstResponse = {
+      status: 400,
+      headers: {
+        get: (name) => name.toLowerCase() === "content-type" ? "application/json" : null
+      },
+      body: { cancel },
+      bodyUsed: false,
+      clone: () => ({
+        text: () => Promise.resolve(JSON.stringify({
+          error: {
+            code: "unsupported_parameter",
+            param: "max_tokens",
+            message: "Unsupported parameter: max_tokens. Use max_completion_tokens instead."
+          }
+        }))
+      })
+    };
+    const proxyAwareFetch = vi
+      .fn()
+      .mockResolvedValueOnce(firstResponse)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }));
+
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch }));
+
+    const { BaseExecutor, flushParamCacheSaveForTests } = await import("../../open-sse/executors/base.js");
+    const executor = new BaseExecutor("openai-compatible-test", { baseUrl: "https://example.test/v1" });
+
+    const result = await executor.execute({
+      model: "model-a",
+      body: { messages: [], max_tokens: 5 },
+      stream: false,
+      credentials: { apiKey: "test-key" },
+      log: null
+    });
+
+    expect(result.response.status).toBe(200);
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(proxyAwareFetch.mock.invocationCallOrder[1]);
+    await flushParamCacheSaveForTests();
+  });
+
   it("retries pending param cache saves after transient write failures", async () => {
     previousDataDir = process.env.DATA_DIR;
     dataDir = await mkdtemp(join(tmpdir(), "9router-param-cache-"));
