@@ -3,26 +3,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const PARAM_CACHE_TIMEOUT_MS = 2000;
-const PARAM_CACHE_POLL_MS = 25;
-
-async function readParamCacheUntil(dataDir, key, expectedValue) {
+async function readParamCache(dataDir) {
   const filePath = join(dataDir, "param_fixes.json");
-  const deadline = Date.now() + PARAM_CACHE_TIMEOUT_MS;
-  let lastError;
-
-  while (Date.now() < deadline) {
-    try {
-      const cache = JSON.parse(await readFile(filePath, "utf8"));
-      if (JSON.stringify(cache[key]) === JSON.stringify(expectedValue)) return cache;
-    } catch (error) {
-      lastError = error;
-    }
-    await sleep(PARAM_CACHE_POLL_MS);
-  }
-
-  throw new Error(`Timed out waiting for ${key} in param_fixes.json${lastError ? `: ${lastError.message}` : ""}`);
+  return JSON.parse(await readFile(filePath, "utf8"));
 }
 
 describe("BaseExecutor parameter cache persistence", () => {
@@ -60,7 +43,7 @@ describe("BaseExecutor parameter cache persistence", () => {
 
     vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch }));
 
-    const { BaseExecutor } = await import("../../open-sse/executors/base.js");
+    const { BaseExecutor, flushParamCacheSaveForTests } = await import("../../open-sse/executors/base.js");
     const executor = new BaseExecutor("openai-compatible-test", { baseUrl: "https://example.test/v1" });
     const body = { messages: [], max_tokens: 5 };
 
@@ -80,9 +63,8 @@ describe("BaseExecutor parameter cache persistence", () => {
     });
     expect(body).toEqual({ messages: [], max_tokens: 5 });
 
-    const cache = await readParamCacheUntil(dataDir, "openai-compatible-test:model-a", {
-      max_tokens: "max_completion_tokens"
-    });
+    await flushParamCacheSaveForTests();
+    const cache = await readParamCache(dataDir);
     expect(cache["openai-compatible-test:model-a"]).toEqual({
       max_tokens: "max_completion_tokens"
     });
@@ -119,7 +101,7 @@ describe("BaseExecutor parameter cache persistence", () => {
       };
     });
 
-    const { BaseExecutor } = await import("../../open-sse/executors/base.js");
+    const { BaseExecutor, flushParamCacheSaveForTests } = await import("../../open-sse/executors/base.js");
     const { writeJsonFileAtomically } = await import("../../open-sse/utils/atomicWrite.js");
     const executor = new BaseExecutor("openai-compatible-test", { baseUrl: "https://example.test/v1" });
 
@@ -133,9 +115,8 @@ describe("BaseExecutor parameter cache persistence", () => {
 
     expect(result.response.status).toBe(200);
 
-    const cache = await readParamCacheUntil(dataDir, "openai-compatible-test:model-a", {
-      max_tokens: "max_completion_tokens"
-    });
+    await flushParamCacheSaveForTests();
+    const cache = await readParamCache(dataDir);
     expect(cache["openai-compatible-test:model-a"]).toEqual({
       max_tokens: "max_completion_tokens"
     });
@@ -160,7 +141,7 @@ describe("BaseExecutor parameter cache persistence", () => {
 
     vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch }));
 
-    const { BaseExecutor } = await import("../../open-sse/executors/base.js");
+    const { BaseExecutor, flushParamCacheSaveForTests } = await import("../../open-sse/executors/base.js");
     const executor = new BaseExecutor("openai-compatible-test", { baseUrl: "https://example.test/v1" });
 
     const result = await executor.execute({
@@ -178,9 +159,8 @@ describe("BaseExecutor parameter cache persistence", () => {
       max_completion_tokens: 5
     });
 
-    const cache = await readParamCacheUntil(dataDir, "openai-compatible-test:model-a", {
-      max_tokens: "max_completion_tokens"
-    });
+    await flushParamCacheSaveForTests();
+    const cache = await readParamCache(dataDir);
     expect(cache["openai-compatible-test:model-a"]).toEqual({
       max_tokens: "max_completion_tokens"
     });
@@ -206,7 +186,7 @@ describe("BaseExecutor parameter cache persistence", () => {
 
     vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch }));
 
-    const { BaseExecutor } = await import("../../open-sse/executors/base.js");
+    const { BaseExecutor, flushParamCacheSaveForTests } = await import("../../open-sse/executors/base.js");
     const executor = new BaseExecutor("openai-compatible-test", {
       baseUrl: "https://example.test/v1",
       maxAutoFixAttempts: 2
@@ -238,10 +218,8 @@ describe("BaseExecutor parameter cache persistence", () => {
       param_c: "c"
     });
 
-    const cache = await readParamCacheUntil(dataDir, "openai-compatible-test:model-a", {
-      param_a: null,
-      param_b: null
-    });
+    await flushParamCacheSaveForTests();
+    const cache = await readParamCache(dataDir);
     expect(cache["openai-compatible-test:model-a"]).toEqual({
       param_a: null,
       param_b: null

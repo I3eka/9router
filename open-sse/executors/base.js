@@ -100,6 +100,20 @@ async function flushParamCacheSave() {
 
 const paramCacheReady = initParamCache();
 
+export async function flushParamCacheSaveForTests(maxPasses = 5) {
+  await paramCacheReady;
+
+  for (let pass = 0; pass < maxPasses; pass++) {
+    if (paramCacheSaveTimer) {
+      clearTimeout(paramCacheSaveTimer);
+      paramCacheSaveTimer = null;
+    }
+
+    if (!paramCacheSaveDirty || paramCacheSaveInFlight) return;
+    await flushParamCacheSave();
+  }
+}
+
 /**
  * BaseExecutor - Base class for provider executors
  */
