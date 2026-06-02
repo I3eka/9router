@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchOpenAIStyleWithTokenFallback } from "../../src/lib/openaiParamFallback.js";
+import {
+  OPENAI_STYLE_PROBE_MAX_TOKENS,
+  fetchOpenAIStyleWithTokenFallback
+} from "../../src/lib/openaiParamFallback.js";
 
 describe("fetchOpenAIStyleWithTokenFallback", () => {
+  it("keeps validation probes capped to the smallest useful completion", () => {
+    expect(OPENAI_STYLE_PROBE_MAX_TOKENS).toBe(1);
+  });
+
   it("uses the shared unsupported-param parser for plain-text fallback errors", async () => {
     const fetcher = vi
       .fn()

@@ -1,6 +1,8 @@
 import { extractUnsupportedParamFromText } from "../../open-sse/utils/unsupportedParam.js";
 
-export const OPENAI_STYLE_PROBE_MAX_TOKENS = 64;
+// Validation probes only need to prove the endpoint accepts the token-limit field.
+// Keep this minimal to limit worst-case spend/latency if a provider ignores the prompt.
+export const OPENAI_STYLE_PROBE_MAX_TOKENS = 1;
 
 async function getTokenFallbackPayload(response, payload) {
   if (response.status !== 400 || !payload || typeof payload !== "object") {
