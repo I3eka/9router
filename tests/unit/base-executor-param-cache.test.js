@@ -3,7 +3,27 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const PARAM_CACHE_TIMEOUT_MS = 2000;
+const PARAM_CACHE_POLL_MS = 25;
+
+async function readParamCacheUntil(dataDir, key, expectedValue) {
+  const filePath = join(dataDir, "param_fixes.json");
+  const deadline = Date.now() + PARAM_CACHE_TIMEOUT_MS;
+  let lastError;
+
+  while (Date.now() < deadline) {
+    try {
+      const cache = JSON.parse(await readFile(filePath, "utf8"));
+      if (JSON.stringify(cache[key]) === JSON.stringify(expectedValue)) return cache;
+    } catch (error) {
+      lastError = error;
+    }
+    await sleep(PARAM_CACHE_POLL_MS);
+  }
+
+  throw new Error(`Timed out waiting for ${key} in param_fixes.json${lastError ? `: ${lastError.message}` : ""}`);
+}
 
 describe("BaseExecutor parameter cache persistence", () => {
   let dataDir;
@@ -59,8 +79,9 @@ describe("BaseExecutor parameter cache persistence", () => {
     });
     expect(body).toEqual({ messages: [], max_tokens: 5 });
 
-    await wait(400);
-    const cache = JSON.parse(await readFile(join(dataDir, "param_fixes.json"), "utf8"));
+    const cache = await readParamCacheUntil(dataDir, "openai-compatible-test:model-a", {
+      max_tokens: "max_completion_tokens"
+    });
     expect(cache["openai-compatible-test:model-a"]).toEqual({
       max_tokens: "max_completion_tokens"
     });
@@ -103,8 +124,9 @@ describe("BaseExecutor parameter cache persistence", () => {
       max_completion_tokens: 5
     });
 
-    await wait(400);
-    const cache = JSON.parse(await readFile(join(dataDir, "param_fixes.json"), "utf8"));
+    const cache = await readParamCacheUntil(dataDir, "openai-compatible-test:model-a", {
+      max_tokens: "max_completion_tokens"
+    });
     expect(cache["openai-compatible-test:model-a"]).toEqual({
       max_tokens: "max_completion_tokens"
     });
