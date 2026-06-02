@@ -7,7 +7,6 @@ import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelStrip, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
-import { isJsonContentType } from "../utils/contentType.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
@@ -259,14 +258,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (result) { streamController.handleComplete(); return result; }
 
     // Some providers in this bucket can still return ordinary JSON when the
-    // translated payload contains stream:false. bodyUsed only tells us whether
-    // a reader was acquired, so use content-type to avoid treating SSE as JSON.
-    const providerContentType = providerResponse.headers.get("content-type") || "";
-    if (isJsonContentType(providerContentType)) {
-      const jsonResult = await handleNonStreamingResponse({ ...sharedCtx, stream: false, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog });
-      streamController.handleComplete();
-      return jsonResult;
-    }
+    // translated payload contains stream:false, even with missing or incorrect
+    // Content-Type. handleNonStreamingResponse still treats explicit SSE as SSE
+    // and otherwise safely attempts JSON parsing with its own error handling.
+    const jsonResult = await handleNonStreamingResponse({ ...sharedCtx, stream: false, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog });
+    streamController.handleComplete();
+    return jsonResult;
   }
 
   // True non-streaming response
