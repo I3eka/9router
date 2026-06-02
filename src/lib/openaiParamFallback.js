@@ -1,8 +1,9 @@
 import { extractUnsupportedParamFromText } from "../../open-sse/utils/unsupportedParam.js";
 
-// Validation probes only need to prove the endpoint accepts the token-limit field.
-// Keep this minimal to limit worst-case spend/latency if a provider ignores the prompt.
-export const OPENAI_STYLE_PROBE_MAX_TOKENS = 1;
+// Validation probes need enough output budget to avoid false 400s from models
+// that reject too-small caps as "max_tokens or model output limit was reached".
+// Keep this bounded, but do not lower to 1 without rechecking OpenAI/gpt-5.x.
+export const OPENAI_STYLE_PROBE_MAX_TOKENS = 64;
 
 async function getTokenFallbackPayload(response, payload) {
   if (response.status !== 400 || !payload || typeof payload !== "object") {

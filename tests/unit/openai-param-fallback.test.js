@@ -5,8 +5,8 @@ import {
 } from "../../src/lib/openaiParamFallback.js";
 
 describe("fetchOpenAIStyleWithTokenFallback", () => {
-  it("keeps validation probes capped to the smallest useful completion", () => {
-    expect(OPENAI_STYLE_PROBE_MAX_TOKENS).toBe(1);
+  it("keeps validation probes high enough to avoid output-limit false negatives", () => {
+    expect(OPENAI_STYLE_PROBE_MAX_TOKENS).toBe(64);
   });
 
   it("uses the shared unsupported-param parser for plain-text fallback errors", async () => {
