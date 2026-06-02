@@ -105,4 +105,27 @@ describe("fetchOpenAIStyleWithTokenFallback", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(cancel).not.toHaveBeenCalled();
   });
+
+  it("does not retry token fallback for unrelated unsupported model errors", async () => {
+    const firstResponse = new Response(JSON.stringify({
+      error: {
+        message: "This model is not supported for max_tokens or output limits."
+      }
+    }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" }
+    });
+    const fetcher = vi.fn().mockResolvedValueOnce(firstResponse);
+
+    const response = await fetchOpenAIStyleWithTokenFallback(fetcher, "https://example.test/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    }, {
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 64
+    });
+
+    expect(response).toBe(firstResponse);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
 });

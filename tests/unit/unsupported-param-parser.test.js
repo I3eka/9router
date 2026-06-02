@@ -37,6 +37,30 @@ describe("unsupported parameter parser", () => {
     expect(parseErrorPayload("not-json")).toBeNull();
   });
 
+  it("ignores broad unsupported errors when no parameter name is present", () => {
+    expect(extractUnsupportedParamFromText(JSON.stringify({
+      error: {
+        message: "This model is not supported for max_tokens or output limits."
+      }
+    }))).toBeNull();
+
+    expect(extractUnsupportedParamFromText(
+      "Unsupported feature for this model. Try a different model."
+    )).toBeNull();
+  });
+
+  it("accepts recognized unsupported-param codes even without an extracted parameter", () => {
+    expect(extractUnsupportedParamFromText(JSON.stringify({
+      error: {
+        code: "unsupported_parameter",
+        message: "Unsupported parameter."
+      }
+    }))).toEqual({
+      param: undefined,
+      msg: "unsupported parameter."
+    });
+  });
+
   it("reads response text before applying the shared parser", async () => {
     const response = new Response("Unrecognized argument max_tokens", {
       status: 400,

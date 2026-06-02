@@ -17,14 +17,12 @@ export function extractUnsupportedParamFromText(responseText) {
     if (match) param = match[1];
   }
 
-  const isUnsupported =
+  const hasRecognizedUnsupportedParamCode =
     err.code === "unsupported_parameter" ||
-    err.code === "unrecognized_request_argument" ||
-    msg.includes("unsupported") ||
-    msg.includes("unrecognized") ||
-    msg.includes("not supported");
+    err.code === "unrecognized_request_argument";
+  const hasParam = typeof param === "string" && param.length > 0;
 
-  return isUnsupported ? { param, msg } : null;
+  return hasRecognizedUnsupportedParamCode || hasParam ? { param, msg } : null;
 }
 
 export async function extractUnsupportedParamFromResponse(response) {
