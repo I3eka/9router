@@ -190,12 +190,12 @@ export class BaseExecutor {
 
     for (const [badParam, goodParam] of Object.entries(fixes)) {
       if (body[badParam] !== undefined) {
-        if (goodParam) body[goodParam] = body[badParam];
+        if (goodParam && body[goodParam] === undefined) body[goodParam] = body[badParam];
         delete body[badParam];
       }
 
       if (transformedBody && transformedBody[badParam] !== undefined) {
-        if (goodParam) transformedBody[goodParam] = transformedBody[badParam];
+        if (goodParam && transformedBody[goodParam] === undefined) transformedBody[goodParam] = transformedBody[badParam];
         delete transformedBody[badParam];
       }
     }

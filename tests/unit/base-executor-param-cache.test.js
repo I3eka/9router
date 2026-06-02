@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -62,6 +62,41 @@ describe("BaseExecutor parameter cache persistence", () => {
     const cache = JSON.parse(await readFile(join(dataDir, "param_fixes.json"), "utf8"));
     expect(cache["openai-compatible-test:model-a"]).toEqual({
       max_tokens: "max_completion_tokens"
+    });
+  });
+
+  it("preserves an already-present replacement param when applying cached fixes", async () => {
+    previousDataDir = process.env.DATA_DIR;
+    dataDir = await mkdtemp(join(tmpdir(), "9router-param-cache-"));
+    process.env.DATA_DIR = dataDir;
+    await writeFile(join(dataDir, "param_fixes.json"), JSON.stringify({
+      "openai-compatible-test:model-a": {
+        max_tokens: "max_completion_tokens"
+      }
+    }));
+
+    const proxyAwareFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    }));
+
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch }));
+
+    const { BaseExecutor } = await import("../../open-sse/executors/base.js");
+    const executor = new BaseExecutor("openai-compatible-test", { baseUrl: "https://example.test/v1" });
+
+    await executor.execute({
+      model: "model-a",
+      body: { messages: [], max_tokens: 5, max_completion_tokens: 11 },
+      stream: false,
+      credentials: { apiKey: "test-key" },
+      log: null
+    });
+
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(proxyAwareFetch.mock.calls[0][1].body)).toEqual({
+      messages: [],
+      max_completion_tokens: 11
     });
   });
 });
