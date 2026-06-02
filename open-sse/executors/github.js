@@ -106,6 +106,11 @@ export class GithubExecutor extends BaseExecutor {
   transformRequest(model, body, stream, credentials) {
     const transformed = { ...body };
 
+    // Do not reintroduce proactive model-name regex fixes here (for example,
+    // gpt-* token renames or Claude/GPT field stripping). GitHub Copilot model
+    // compatibility changes often enough that those rules go stale; the
+    // intentional tradeoff is one bounded 400 retry on a cold provider/model,
+    // then BaseExecutor learns and caches the exact upstream-supported fix.
     // "none" means the client asks to disable thinking. Many APIs reject this
     // string flag, so strip it and let BaseExecutor learn other unsupported params.
     if (transformed.reasoning_effort === "none") {
