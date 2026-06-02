@@ -83,6 +83,7 @@ async function flushParamCacheSave() {
     const data = Object.fromEntries(paramFixCache.entries());
     await writeJsonFileAtomically(fsPromises, cacheFilePath, data);
   } catch (error) {
+    paramCacheSaveDirty = true;
     dbg("CACHE", `Failed to save param cache: ${error.message}`);
   } finally {
     paramCacheSaveInFlight = false;
